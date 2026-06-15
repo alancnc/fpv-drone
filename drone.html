@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>FPV DRONE — Módulo Drone</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #00ff41;
+      font-family: 'Courier New', monospace;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+    #videoPreview {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    #videoPreview.active { opacity: 1; }
+    .overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .hud-top {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 12px 16px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+      z-index: 20;
+    }
+    .hud-title {
+      font-size: 0.7rem;
+      letter-spacing: 4px;
+      color: #00ff41;
+      text-shadow: 0 0 8px #00ff41;
+    }
+    .hud-room {
+      font-size: 0.65rem;
+      color: #00aa28;
+      margin-top: 2px;
+    }
+    .hud-bottom {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+      z-index: 20;
+    }
+    .hud-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .hud-item {
+      font-size: 0.7rem;
+    }
+    .hud-label {
+      color: #005510;
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+    }
+    .hud-value {
+      color: #00ff41;
+      text-shadow: 0 0 6px #00ff41;
+    }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #333;
+    }
+    .status-dot.active { background: #00ff41; box-shadow: 0 0 8px #00ff41; animation: pulse 1.5s infinite; }
+    .status-dot.error { background: #ff3333; box-shadow: 0 0 8px #ff3333; }
+    .status-dot.warn { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .status-text {
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      color: #00aa28;
+    }
+    #btnStart {
+      width: 100%;
+      padding: 18px;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      letter-spacing: 4px;
+      border: 2px solid #00ff41;
+      background: rgba(0,255,65,0.1);
+      color: #00ff41;
+      cursor: pointer;
+      text-shadow: 0 0 8px #00ff41;
+      box-shadow: 0 0 20px rgba(0,255,65,0.3);
+      pointer-events: all;
+      transition: all 0.2s;
+    }
+    #btnStart:hover, #btnStart:active {
+      background: #00ff41;
+      color: #000;
+    }
+    #btnStart:disabled {
+      border-color: #333;
+      color: #333;
+      background: transparent;
+      text-shadow: none;
+      box-shadow: none;
+      cursor: default;
+    }
+    .crosshair {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px; height: 40px;
+      pointer-events: none;
+      z-index: 15;
+    }
+    .crosshair::before, .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(0,255,65,0.6);
+    }
+    .crosshair::before { width: 100%; height: 1px; top: 50%; }
+    .crosshair::after { width: 1px; height: 100%; left: 50%; }
+    .center-circle {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px; height: 20px;
+      border: 1px solid rgba(0,255,65,0.5);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 15;
+    }
+    #startScreen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      background: #000;
+    }
+    .start-logo {
+      font-size: 1.5rem;
+      letter-spacing: 6px;
+      text-shadow: 0 0 20px #00ff41;
+      margin-bottom: 8px;
+    }
+    .start-sub {
+      font-size: 0.7rem;
+      color: #00aa28;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+    }
+    .start-room {
+      font-size: 0.65rem;
+      color: #005510;
+      margin-bottom: 40px;
+    }
+    #btnStartMain {
+      padding: 20px 50px;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1rem;
+      letter-spacing: 5px;
+      border: 2px solid #00ff41;
+      background: transparent;
+      color: #00ff41;
+      cursor: pointer;
+      text-shadow: 0 0 10px #00ff41;
+      box-shadow: 0 0 30px rgba(0,255,65,0.4);
+      transition: all 0.2s;
+    }
+    #btnStartMain:hover, #btnStartMain:active {
+      background: #00ff41;
+      color: #000;
+      box-shadow: 0 0 50px rgba(0,255,65,0.8);
+    }
+    .error-msg {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.95);
+      border: 2px solid #ff3333;
+      padding: 20px 30px;
+      text-align: center;
+      z-index: 100;
+      color: #ff3333;
+      font-size: 0.8rem;
+      letter-spacing: 2px;
+      max-width: 320px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="startScreen">
+  <div class="start-logo">📡 FPV DRONE</div>
+  <div class="start-sub">MÓDULO DE VUELO</div>
+  <div class="start-room" id="startRoomLabel">ROOM: ------</div>
+  <button id="btnStartMain" onclick="initFlight()">▶ INICIAR VUELO</button>
+</div>
+
+<video id="videoPreview" autoplay muted playsinline></video>
+
+<div class="crosshair"></div>
+<div class="center-circle"></div>
+
+<div class="hud-top">
+  <div class="hud-title">📡 FPV DRONE — EN VUELO</div>
+  <div class="hud-room" id="hudRoom">ROOM: ------</div>
+</div>
+
+<div class="hud-bottom">
+  <div class="hud-grid">
+    <div class="hud-item">
+      <div class="hud-label">LAT</div>
+      <div class="hud-value" id="hudLat">---</div>
+    </div>
+    <div class="hud-item">
+      <div class="hud-label">LNG</div>
+      <div class="hud-value" id="hudLng">---</div>
+    </div>
+    <div class="hud-item">
+      <div class="hud-label">PRECISIÓN</div>
+      <div class="hud-value" id="hudAcc">---</div>
+    </div>
+    <div class="hud-item">
+      <div class="hud-label">BATERÍA</div>
+      <div class="hud-value" id="hudBat">---</div>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot" id="dotCamera"></div>
+    <span class="status-text">CAM</span>
+    <div class="status-dot" id="dotGps"></div>
+    <span class="status-text">GPS</span>
+    <div class="status-dot" id="dotWebrtc"></div>
+    <span class="status-text">LINK</span>
+    <div class="status-dot" id="dotBattery"></div>
+    <span class="status-text" id="statusText">INICIANDO...</span>
+  </div>
+</div>
+
+<div class="error-msg" id="errorMsg"></div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const ROOM_ID = params.get('room') || 'TEST01';
+
+  document.getElementById('startRoomLabel').textContent = 'ROOM: ' + ROOM_ID;
+  document.getElementById('hudRoom').textContent = 'ROOM: ' + ROOM_ID;
+
+  // Firebase init
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.database();
+
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+
+  let pc = null;
+  let localStream = null;
+  let gpsWatchId = null;
+  let batteryInterval = null;
+  let wakeLock = null;
+
+  function setDot(id, state) {
+    const el = document.getElementById(id);
+    el.className = 'status-dot' + (state ? ' ' + state : '');
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  async function initFlight() {
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('statusText').textContent = 'INICIANDO...';
+
+    // WakeLock
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch(e) {
+      console.warn('WakeLock no disponible:', e);
+    }
+
+    // Cámara trasera
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false
+      });
+      const vid = document.getElementById('videoPreview');
+      vid.srcObject = localStream;
+      vid.classList.add('active');
+      setDot('dotCamera', 'active');
+    } catch(e) {
+      // Fallback sin exact
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        const vid = document.getElementById('videoPreview');
+        vid.srcObject = localStream;
+        vid.classList.add('active');
+        setDot('dotCamera', 'active');
+      } catch(e2) {
+        setDot('dotCamera', 'error');
+        showError('ERROR CÁMARA: ' + e2.message);
+      }
+    }
+
+    // GPS
+    if ('geolocation' in navigator) {
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude: lat, longitude: lng, accuracy: acc, speed } = pos.coords;
+          document.getElementById('hudLat').textContent = lat.toFixed(6);
+          document.getElementById('hudLng').textContent = lng.toFixed(6);
+          document.getElementById('hudAcc').textContent = acc.toFixed(0) + 'm';
+          setDot('dotGps', 'active');
+
+          // Enviar a Firebase
+          const gpsRef = db.ref('rooms/' + ROOM_ID + '/gps');
+          gpsRef.set({
+            lat,
+            lng,
+            acc,
+            speed: speed !== null ? speed * 3.6 : 0,
+            ts: Date.now()
+          });
+        },
+        (err) => {
+          setDot('dotGps', 'error');
+          console.warn('GPS error:', err);
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    } else {
+      setDot('dotGps', 'error');
+    }
+
+    // Battery API
+    if ('getBattery' in navigator) {
+      navigator.getBattery().then(bat => {
+        function updateBat() {
+          const pct = Math.round(bat.level * 100);
+          document.getElementById('hudBat').textContent = pct + '%';
+          const state = pct > 20 ? 'active' : 'warn';
+          setDot('dotBattery', pct > 10 ? state : 'error');
+          // Enviar batería a Firebase
+          db.ref('rooms/' + ROOM_ID + '/battery').set({ pct, ts: Date.now() });
+        }
+        updateBat();
+        bat.addEventListener('levelchange', updateBat);
+        batteryInterval = setInterval(updateBat, 30000);
+      });
+    } else {
+      document.getElementById('hudBat').textContent = 'N/A';
+      setDot('dotBattery', 'warn');
+    }
+
+    // WebRTC
+    await startWebRTC();
+  }
+
+  async function startWebRTC() {
+    // Limpiar room anterior
+    await db.ref('rooms/' + ROOM_ID).remove();
+
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    // Agregar tracks de video
+    if (localStream) {
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    }
+
+    // ICE candidates → Firebase
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        const ref = db.ref('rooms/' + ROOM_ID + '/offerCandidates');
+        ref.push(e.candidate.toJSON());
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      if (state === 'connected') {
+        setDot('dotWebrtc', 'active');
+        document.getElementById('statusText').textContent = 'ENLACE ACTIVO';
+      } else if (state === 'disconnected' || state === 'failed') {
+        setDot('dotWebrtc', 'error');
+        document.getElementById('statusText').textContent = 'SIN ENLACE';
+        // Reconexión automática
+        setTimeout(startWebRTC, 3000);
+      } else {
+        setDot('dotWebrtc', 'warn');
+        document.getElementById('statusText').textContent = state.toUpperCase();
+      }
+    };
+
+    // Crear offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await db.ref('rooms/' + ROOM_ID + '/offer').set({
+      type: offer.type,
+      sdp: offer.sdp
+    });
+    setDot('dotWebrtc', 'warn');
+    document.getElementById('statusText').textContent = 'ESPERANDO ESTACIÓN...';
+
+    // Escuchar answer
+    const answerRef = db.ref('rooms/' + ROOM_ID + '/answer');
+    answerRef.on('value', async (snap) => {
+      const data = snap.val();
+      if (data && !pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data));
+      }
+    });
+
+    // ICE candidates de estación
+    const answerCandRef = db.ref('rooms/' + ROOM_ID + '/answerCandidates');
+    answerCandRef.on('child_added', async (snap) => {
+      const data = snap.val();
+      if (data) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(data));
+        } catch(e) {
+          console.warn('ICE error:', e);
+        }
+      }
+    });
+  }
+
+  // Limpiar al salir
+  window.addEventListener('beforeunload', () => {
+    if (gpsWatchId !== null) navigator.geolocation.clearWatch(gpsWatchId);
+    if (wakeLock) wakeLock.release();
+    if (pc) pc.close();
+    db.ref('rooms/' + ROOM_ID).remove();
+  });
+</script>
+</body>
+</html>

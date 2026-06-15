@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FPV DRONE SYSTEM</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #00ff41;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .header h1 {
+      font-size: 2.5rem;
+      letter-spacing: 8px;
+      text-shadow: 0 0 20px #00ff41;
+      margin-bottom: 8px;
+    }
+    .header p {
+      font-size: 0.85rem;
+      color: #00aa28;
+      letter-spacing: 4px;
+    }
+    .room-box {
+      border: 2px solid #00ff41;
+      padding: 30px 40px;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(0,255,65,0.3), inset 0 0 30px rgba(0,255,65,0.05);
+      max-width: 500px;
+      width: 90%;
+    }
+    .room-label {
+      font-size: 0.75rem;
+      letter-spacing: 4px;
+      color: #00aa28;
+      margin-bottom: 12px;
+    }
+    .room-id {
+      font-size: 3.5rem;
+      letter-spacing: 12px;
+      font-weight: bold;
+      text-shadow: 0 0 15px #00ff41;
+      margin-bottom: 8px;
+    }
+    .room-hint {
+      font-size: 0.7rem;
+      color: #006614;
+      margin-bottom: 30px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 14px 28px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem;
+      letter-spacing: 3px;
+      border: 2px solid #00ff41;
+      background: transparent;
+      color: #00ff41;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover {
+      background: #00ff41;
+      color: #000;
+      box-shadow: 0 0 20px #00ff41;
+    }
+    .btn-drone {
+      border-color: #00ff41;
+    }
+    .btn-ground {
+      border-color: #00aaff;
+      color: #00aaff;
+    }
+    .btn-ground:hover {
+      background: #00aaff;
+      color: #000;
+      box-shadow: 0 0 20px #00aaff;
+    }
+    .btn-new {
+      border-color: #444;
+      color: #444;
+      font-size: 0.75rem;
+      padding: 10px 20px;
+    }
+    .btn-new:hover {
+      background: #444;
+      color: #000;
+      box-shadow: none;
+    }
+    .instructions {
+      margin-top: 40px;
+      max-width: 500px;
+      width: 90%;
+      border: 1px solid #003308;
+      padding: 20px;
+    }
+    .instructions h3 {
+      font-size: 0.75rem;
+      letter-spacing: 3px;
+      color: #00aa28;
+      margin-bottom: 16px;
+    }
+    .step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 0.75rem;
+      color: #006614;
+    }
+    .step-num {
+      color: #00ff41;
+      min-width: 20px;
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 0.65rem;
+      color: #002208;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>FPV DRONE</h1>
+    <p>SISTEMA DE CONTROL EN TIEMPO REAL</p>
+  </div>
+
+  <div class="room-box">
+    <div class="room-label">► ROOM ID ◄</div>
+    <div class="room-id" id="roomId">------</div>
+    <div class="room-hint">Compartí este código con el operador del drone</div>
+    <div class="btn-group">
+      <a class="btn btn-drone" id="btnDrone" href="#">📡 DRONE</a>
+      <a class="btn btn-ground" id="btnGround" href="#">🖥 ESTACIÓN</a>
+    </div>
+    <br>
+    <button class="btn btn-new" onclick="generateRoom()">↺ NUEVO ID</button>
+  </div>
+
+  <div class="instructions">
+    <h3>► INSTRUCCIONES DE USO</h3>
+    <div class="step"><span class="step-num">01</span><span>Generá un Room ID único con el botón de arriba</span></div>
+    <div class="step"><span class="step-num">02</span><span>En el CELULAR (drone): tocá el botón DRONE</span></div>
+    <div class="step"><span class="step-num">03</span><span>En la PC (piloto): tocá el botón ESTACIÓN</span></div>
+    <div class="step"><span class="step-num">04</span><span>En el celular: presioná INICIAR VUELO</span></div>
+    <div class="step"><span class="step-num">05</span><span>Video y GPS aparecen automáticamente en la PC</span></div>
+  </div>
+
+  <div class="footer">FPV DRONE SYSTEM v1.0 — WebRTC + Firebase + GPS</div>
+
+  <script>
+    function generateRoom() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let id = '';
+      for (let i = 0; i < 6; i++) {
+        id += chars[Math.floor(Math.random() * chars.length)];
+      }
+      document.getElementById('roomId').textContent = id;
+      document.getElementById('btnDrone').href = 'drone.html?room=' + id;
+      document.getElementById('btnGround').href = 'ground.html?room=' + id;
+      // Guardar en localStorage
+      localStorage.setItem('fpv_last_room', id);
+    }
+
+    // Recuperar último room o generar nuevo
+    const lastRoom = localStorage.getItem('fpv_last_room');
+    if (lastRoom) {
+      document.getElementById('roomId').textContent = lastRoom;
+      document.getElementById('btnDrone').href = 'drone.html?room=' + lastRoom;
+      document.getElementById('btnGround').href = 'ground.html?room=' + lastRoom;
+    } else {
+      generateRoom();
+    }
+  </script>
+</body>
+</html>
