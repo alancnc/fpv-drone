@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FPV GROUND STATION</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #00ff41;
+      font-family: 'Courier New', monospace;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+    #videoEl {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    /* HUD Overlay */
+    .hud {
+      position: absolute;
+      top: 16px; left: 16px;
+      z-index: 20;
+      pointer-events: none;
+      min-width: 200px;
+    }
+    .hud-title {
+      font-size: 0.65rem;
+      letter-spacing: 4px;
+      color: #00aa28;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #002208;
+      padding-bottom: 6px;
+    }
+    .hud-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 4px;
+    }
+    .hud-label {
+      font-size: 0.6rem;
+      color: #005510;
+      letter-spacing: 2px;
+    }
+    .hud-val {
+      font-size: 0.7rem;
+      color: #00ff41;
+      text-shadow: 0 0 6px #00ff41;
+      text-align: right;
+    }
+    .hud-val.warn { color: #ffaa00; text-shadow: 0 0 6px #ffaa00; }
+    .hud-val.error { color: #ff3333; text-shadow: 0 0 6px #ff3333; }
+    .signal-bar {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .signal-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ff3333;
+    }
+    .signal-dot.live {
+      background: #00ff41;
+      box-shadow: 0 0 10px #00ff41;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .signal-text {
+      font-size: 0.65rem;
+      letter-spacing: 3px;
+    }
+    .signal-text.live { color: #00ff41; }
+    .signal-text.dead { color: #ff3333; }
+    /* Sesión timer */
+    .session-timer {
+      font-size: 0.6rem;
+      color: #003308;
+      margin-top: 4px;
+    }
+    /* Mapa */
+    #mapContainer {
+      position: absolute;
+      bottom: 16px; right: 16px;
+      width: 300px; height: 300px;
+      z-index: 20;
+      border: 1px solid #00ff41;
+      box-shadow: 0 0 20px rgba(0,255,65,0.3);
+    }
+    #map { width: 100%; height: 260px; }
+    .map-controls {
+      background: #000;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .map-label {
+      font-size: 0.55rem;
+      color: #005510;
+      letter-spacing: 2px;
+    }
+    #btnCenter {
+      font-family: 'Courier New', monospace;
+      font-size: 0.55rem;
+      letter-spacing: 1px;
+      border: 1px solid #00aa28;
+      background: transparent;
+      color: #00aa28;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    #btnCenter:hover {
+      background: #00aa28;
+      color: #000;
+    }
+    /* Waiting screen */
+    #waitScreen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .wait-title {
+      font-size: 1.2rem;
+      letter-spacing: 6px;
+      text-shadow: 0 0 20px #00ff41;
+      margin-bottom: 8px;
+    }
+    .wait-sub {
+      font-size: 0.7rem;
+      color: #00aa28;
+      letter-spacing: 3px;
+      margin-bottom: 4px;
+    }
+    .wait-room {
+      font-size: 0.65rem;
+      color: #005510;
+      margin-bottom: 30px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 2px solid #002208;
+      border-top-color: #00ff41;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .wait-status {
+      font-size: 0.65rem;
+      color: #00aa28;
+      letter-spacing: 2px;
+    }
+    /* Crosshair sutil */
+    .ch-h, .ch-v {
+      position: absolute;
+      background: rgba(0,255,65,0.15);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .ch-h { top: 50%; left: 0; right: 0; height: 1px; }
+    .ch-v { left: 50%; top: 0; bottom: 0; width: 1px; }
+    /* Escaneo visual */
+    .scan-line {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(to right, transparent, rgba(0,255,65,0.3), transparent);
+      animation: scan 4s linear infinite;
+      pointer-events: none;
+      z-index: 5;
+    }
+    @keyframes scan { from{top:0} to{top:100%} }
+  </style>
+</head>
+<body>
+
+<div id="waitScreen">
+  <div class="wait-title">🖥 GROUND STATION</div>
+  <div class="wait-sub">ESTACIÓN DE TIERRA</div>
+  <div class="wait-room" id="waitRoom">ROOM: ------</div>
+  <div class="spinner"></div>
+  <div class="wait-status" id="waitStatus">ESPERANDO SEÑAL DEL DRONE...</div>
+</div>
+
+<video id="videoEl" autoplay playsinline></video>
+<div class="ch-h"></div>
+<div class="ch-v"></div>
+<div class="scan-line"></div>
+
+<!-- HUD -->
+<div class="hud">
+  <div class="hud-title">◈ FPV GROUND STATION ◈</div>
+  <div class="hud-row">
+    <span class="hud-label">LAT</span>
+    <span class="hud-val" id="vLat">---</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">LNG</span>
+    <span class="hud-val" id="vLng">---</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">VEL</span>
+    <span class="hud-val" id="vVel">--- km/h</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">RMB</span>
+    <span class="hud-val" id="vBearing">---°</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">GPS ACC</span>
+    <span class="hud-val" id="vAcc">---</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">BATERÍA</span>
+    <span class="hud-val" id="vBat">---</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">ROOM</span>
+    <span class="hud-val" id="vRoom" style="font-size:0.6rem;color:#005510">------</span>
+  </div>
+  <div class="signal-bar">
+    <div class="signal-dot" id="signalDot"></div>
+    <span class="signal-text dead" id="signalText">SIN SEÑAL</span>
+  </div>
+  <div class="session-timer" id="sessionTimer">SESIÓN: 00:00:00</div>
+</div>
+
+<!-- Mapa -->
+<div id="mapContainer">
+  <div id="map"></div>
+  <div class="map-controls">
+    <span class="map-label">GPS TRACK</span>
+    <button id="btnCenter" onclick="centerMap()">⊕ CENTRAR</button>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="firebase-config.js"></script>
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const ROOM_ID = params.get('room') || 'TEST01';
+
+  document.getElementById('waitRoom').textContent = 'ROOM: ' + ROOM_ID;
+  document.getElementById('vRoom').textContent = ROOM_ID;
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.database();
+
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+
+  let pc = null;
+  let map = null;
+  let marker = null;
+  let polyline = null;
+  let trackPoints = [];
+  let sessionStart = null;
+  let sessionInterval = null;
+  let lastGpsPos = null;
+  let isLive = false;
+
+  // ── Mapa Leaflet ──────────────────────────────────────────
+  function initMap() {
+    map = L.map('map', { zoomControl: false, attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+    map.setView([-34.6, -58.4], 13);
+
+    const icon = L.divIcon({
+      className: '',
+      html: '<div style="width:14px;height:14px;background:#00ff41;border-radius:50%;box-shadow:0 0 10px #00ff41;border:2px solid #000;"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+    marker = L.marker([-34.6, -58.4], { icon }).addTo(map);
+    polyline = L.polyline([], { color: '#00ff41', weight: 2, opacity: 0.7 }).addTo(map);
+  }
+
+  function updateMap(lat, lng) {
+    const latlng = [lat, lng];
+    marker.setLatLng(latlng);
+    trackPoints.push(latlng);
+    polyline.setLatLngs(trackPoints);
+  }
+
+  function centerMap() {
+    if (lastGpsPos) map.setView([lastGpsPos.lat, lastGpsPos.lng], 17);
+  }
+
+  // ── HUD ────────────────────────────────────────────────────
+  function setLive(state) {
+    isLive = state;
+    const dot = document.getElementById('signalDot');
+    const txt = document.getElementById('signalText');
+    if (state) {
+      dot.classList.add('live');
+      txt.className = 'signal-text live';
+      txt.textContent = 'EN VIVO';
+    } else {
+      dot.classList.remove('live');
+      txt.className = 'signal-text dead';
+      txt.textContent = 'SIN SEÑAL';
+    }
+  }
+
+  function calcBearing(lat1, lng1, lat2, lng2) {
+    const toRad = d => d * Math.PI / 180;
+    const dLng = toRad(lng2 - lng1);
+    const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
+              - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  }
+
+  function startSessionTimer() {
+    sessionStart = Date.now();
+    sessionInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - sessionStart) / 1000);
+      const h = String(Math.floor(s / 3600)).padStart(2, '0');
+      const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const sec = String(s % 60).padStart(2, '0');
+      document.getElementById('sessionTimer').textContent = `SESIÓN: ${h}:${m}:${sec}`;
+    }, 1000);
+  }
+
+  // ── WebRTC ─────────────────────────────────────────────────
+  async function startWebRTC() {
+    if (pc) { pc.close(); pc = null; }
+
+    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+    pc.ontrack = (e) => {
+      const videoEl = document.getElementById('videoEl');
+      if (videoEl.srcObject !== e.streams[0]) {
+        videoEl.srcObject = e.streams[0];
+      }
+      document.getElementById('waitScreen').style.display = 'none';
+      setLive(true);
+      if (!sessionStart) startSessionTimer();
+    };
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        db.ref('rooms/' + ROOM_ID + '/answerCandidates').push(e.candidate.toJSON());
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      if (state === 'disconnected' || state === 'failed') {
+        setLive(false);
+        document.getElementById('waitScreen').style.display = 'flex';
+        document.getElementById('waitStatus').textContent = 'RECONECTANDO...';
+        setTimeout(startWebRTC, 3000);
+      }
+    };
+
+    // Escuchar offer del drone
+    const offerRef = db.ref('rooms/' + ROOM_ID + '/offer');
+    offerRef.on('value', async (snap) => {
+      const offer = snap.val();
+      if (!offer || pc.currentRemoteDescription) return;
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await db.ref('rooms/' + ROOM_ID + '/answer').set({
+        type: answer.type,
+        sdp: answer.sdp
+      });
+    });
+
+    // ICE candidates del drone
+    db.ref('rooms/' + ROOM_ID + '/offerCandidates').on('child_added', async (snap) => {
+      const data = snap.val();
+      if (data) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(data));
+        } catch(e) {
+          console.warn('ICE:', e);
+        }
+      }
+    });
+  }
+
+  // ── GPS desde Firebase ─────────────────────────────────────
+  function listenGPS() {
+    db.ref('rooms/' + ROOM_ID + '/gps').on('value', (snap) => {
+      const g = snap.val();
+      if (!g) return;
+
+      document.getElementById('vLat').textContent = g.lat.toFixed(6);
+      document.getElementById('vLng').textContent = g.lng.toFixed(6);
+
+      const vel = g.speed !== undefined ? g.speed.toFixed(1) + ' km/h' : '--- km/h';
+      document.getElementById('vVel').textContent = vel;
+
+      const acc = g.acc !== undefined ? g.acc.toFixed(0) + 'm' : '---';
+      const accEl = document.getElementById('vAcc');
+      accEl.textContent = acc;
+      accEl.className = 'hud-val' + (g.acc > 20 ? ' warn' : '');
+
+      // Bearing
+      if (lastGpsPos) {
+        const brg = calcBearing(lastGpsPos.lat, lastGpsPos.lng, g.lat, g.lng);
+        document.getElementById('vBearing').textContent = brg.toFixed(0) + '°';
+      } else {
+        document.getElementById('vBearing').textContent = '---°';
+      }
+
+      lastGpsPos = g;
+      updateMap(g.lat, g.lng);
+    });
+
+    db.ref('rooms/' + ROOM_ID + '/battery').on('value', (snap) => {
+      const b = snap.val();
+      if (!b) return;
+      const batEl = document.getElementById('vBat');
+      batEl.textContent = b.pct + '%';
+      batEl.className = 'hud-val' + (b.pct < 20 ? ' warn' : '') + (b.pct < 10 ? ' error' : '');
+    });
+  }
+
+  // ── Init ───────────────────────────────────────────────────
+  initMap();
+  listenGPS();
+  startWebRTC();
+
+  // Timeout: si en 60s no hay señal, mostrar mensaje
+  setTimeout(() => {
+    if (!isLive) {
+      document.getElementById('waitStatus').textContent = 'VERIFICÁ QUE EL DRONE ESTÉ ACTIVO';
+    }
+  }, 60000);
+</script>
+</body>
+</html>
